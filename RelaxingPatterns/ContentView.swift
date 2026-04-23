@@ -11,9 +11,9 @@ import Combine
 struct SoftCircle: Identifiable {
     let id = UUID()
     var position: CGPoint
-    let size: CGFloat
+    var size: CGFloat
     let color: Color
-    let opacity: Double
+    var opacity: Double
     let blur: CGFloat
     let driftX: CGFloat
     let driftY: CGFloat
@@ -128,6 +128,12 @@ struct ContentView: View {
                     addTrailBurst(at: value.location)
                 }
         )
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in
+                    intensifyField()
+                }
+        )
         .onReceive(
             Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
         ) { _ in
@@ -195,6 +201,14 @@ struct ContentView: View {
         for index in circles.indices {
             circles[index].position.x += circles[index].driftX
             circles[index].position.y += circles[index].driftY
+        }
+    }
+    private func intensifyField() {
+        withAnimation(.easeOut(duration: 0.45)) {
+            for index in circles.indices {
+                circles[index].size *= CGFloat.random(in: 1.06...1.16)
+                circles[index].opacity = min(circles[index].opacity * 1.12, 0.48)
+            }
         }
     }
 }

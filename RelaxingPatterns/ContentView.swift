@@ -21,13 +21,32 @@ struct SoftCircle: Identifiable {
 
 struct ContentView: View {
     @State private var circles: [SoftCircle] = []
+    @State private var selectedPaletteIndex: Int = 0
     
-    private let colors: [Color] = [.cyan, .pink, .purple, .orange, .green, .blue]
+    private let palettes: [[Color]] = [
+        [.cyan, .pink, .purple, .orange, .green, .blue],
+        [.cyan, .blue, .purple, .pink],
+        [.orange, .yellow, .red, .pink],
+        [.green, .mint, .cyan, .blue],
+        [.white, .gray, .blue.opacity(0.7), .purple.opacity(0.6)]
+    ]
+
+    private var colors: [Color] {
+        palettes[selectedPaletteIndex]
+    }
     
     var body: some View {
         ZStack {
-            Color.black
-                .ignoresSafeArea()
+            LinearGradient(
+                colors: [
+                    Color(red: 0.12, green: 0.13, blue: 0.17),  // cool top
+                    Color(red: 0.16, green: 0.14, blue: 0.15),  // neutral/warm mid
+                    Color(red: 0.11, green: 0.13, blue: 0.16)   // cool bottom
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
             
             ForEach(circles) { circle in
                 Circle()
@@ -45,7 +64,16 @@ struct ContentView: View {
             VStack {
                 HStack {
                     Spacer()
-                    
+
+                    Button("Palette") {
+                        selectedPaletteIndex = (selectedPaletteIndex + 1) % palettes.count
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+
                     Button("Clear") {
                         circles.removeAll()
                     }
@@ -54,7 +82,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .background(.white.opacity(0.18))
                     .clipShape(Capsule())
-                    .padding()
+                    .padding(.trailing)
                 }
                 
                 Spacer()

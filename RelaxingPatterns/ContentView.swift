@@ -34,18 +34,48 @@ struct ContentView: View {
     private var colors: [Color] {
         palettes[selectedPaletteIndex]
     }
-    
+    private var backgroundColors: [Color] {
+        switch selectedPaletteIndex {
+        case 0:
+            return [
+                Color(red: 0.12, green: 0.13, blue: 0.17),
+                Color(red: 0.16, green: 0.14, blue: 0.15),
+                Color(red: 0.11, green: 0.13, blue: 0.16)
+            ]
+        case 1:
+            return [
+                Color(red: 0.10, green: 0.10, blue: 0.16),
+                Color(red: 0.13, green: 0.11, blue: 0.18),
+                Color(red: 0.10, green: 0.12, blue: 0.17)
+            ]
+        case 2:
+            return [
+                Color(red: 0.16, green: 0.11, blue: 0.09),
+                Color(red: 0.18, green: 0.13, blue: 0.10),
+                Color(red: 0.12, green: 0.10, blue: 0.11)
+            ]
+        case 3:
+            return [
+                Color(red: 0.08, green: 0.13, blue: 0.13),
+                Color(red: 0.10, green: 0.16, blue: 0.15),
+                Color(red: 0.08, green: 0.11, blue: 0.14)
+            ]
+        default:
+            return [
+                Color(red: 0.12, green: 0.12, blue: 0.13),
+                Color(red: 0.15, green: 0.15, blue: 0.17),
+                Color(red: 0.11, green: 0.12, blue: 0.14)
+            ]
+        }
+    }
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.12, green: 0.13, blue: 0.17),  // cool top
-                    Color(red: 0.16, green: 0.14, blue: 0.15),  // neutral/warm mid
-                    Color(red: 0.11, green: 0.13, blue: 0.16)   // cool bottom
-                ],
+                colors: backgroundColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+            .animation(.easeInOut(duration: 0.45), value: selectedPaletteIndex)
             .ignoresSafeArea()
             
             ForEach(circles) { circle in
@@ -107,7 +137,7 @@ struct ContentView: View {
     }
     
     private func addBurst(at location: CGPoint) {
-        let newCircles = (0..<12).map { _ in
+        let newCircles = (0..<9).map { _ in
             let jitterX = CGFloat.random(in: -45...45)
             let jitterY = CGFloat.random(in: -45...45)
             
@@ -135,7 +165,7 @@ struct ContentView: View {
         }
     }
     private func addTrailBurst(at location: CGPoint) {
-        let newCircles = (0..<4).map { _ in
+        let newCircles = (0..<3).map { _ in
             let jitterX = CGFloat.random(in: -25...25)
             let jitterY = CGFloat.random(in: -25...25)
             
@@ -147,7 +177,7 @@ struct ContentView: View {
                 size: CGFloat.random(in: 20...80),
                 color: colors.randomElement() ?? .cyan,
                 opacity: Double.random(in: 0.10...0.35),
-                blur: CGFloat.random(in: 4...14),
+                blur: CGFloat.random(in: 4...12),
                 driftX: CGFloat.random(in: -1.4...1.4),
                 driftY: CGFloat.random(in: -1.4...1.4)
             )
@@ -157,8 +187,8 @@ struct ContentView: View {
             circles.append(contentsOf: newCircles)
         }
         
-        if circles.count > 250 {
-            circles.removeFirst(circles.count - 250)
+        if circles.count > 120 {
+            circles.removeFirst(circles.count - 120)
         }
     }
     private func moveCircles() {

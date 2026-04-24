@@ -1,0 +1,2 @@
+.idle: "ambient_segment_01_165s"
+.reset: "ambient_segment_05_205s"

@@ -30,9 +30,9 @@ final class TextCueManager: ObservableObject {
     private let openingCues = [
         "Welcome.",
         "Take 1 minute… or 5.",
+        "Tap Gently",
         "Pause the endless scroll.",
-        "You are okay.",
-        "This is all there is right now."
+        "You are Ok. This is all there is right now."
     ]
 
     private let orientationCues = [

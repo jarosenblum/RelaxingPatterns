@@ -32,12 +32,12 @@ final class TextCueManager: ObservableObject {
         "Take 1 minute… or 5.",
         "Tap Gently",
         "Pause the endless scroll.",
-        "You are Ok. This is all there is right now."
+        "You are Ok. This is all there is right now. Just tap."
     ]
 
     private let orientationCues = [
         "Listen to the music.",
-        "Tap or drag...and hear what changes.",
+        "Gently tap and drag...and hear what changes.",
         "Watch the patterns move away.",
         "Let your attention follow the circles.",
         "Press into the screen to deepen the sound"

@@ -9,6 +9,7 @@ import SwiftUI
 import Combine
 import AVFoundation
 
+
 struct SoftCircle: Identifiable {
     let id = UUID()
     var position: CGPoint
@@ -20,32 +21,14 @@ struct SoftCircle: Identifiable {
     let driftY: CGFloat
     let isTrail: Bool
 }
-extension View {
-    func pillButtonStyle() -> some View {
-        self
-            .foregroundStyle(.white)
-            .font(.system(size: 11, weight: .medium))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.ultraThinMaterial.opacity(0.7))
-            .clipShape(Capsule())
-            .overlay(
-                Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
-            )
-            .fixedSize()
-    }
-}
+
 struct ContentView: View {
-    
     @State private var circles: [SoftCircle] = []
     @State private var selectedPaletteIndex: Int = 0
     @State private var gradientShift: CGFloat = 0
     @State private var lastDragLocation: CGPoint?
     @State private var lastDragTime: Date?
     @State private var idleResetWorkItem: DispatchWorkItem?
-    @State private var lastDeepenCueDate: Date?
-    @State private var deepenResetWorkItem: DispatchWorkItem?
-    @StateObject private var textCueManager = TextCueManager.shared
     
     private let palettes: [[Color]] = [
         [.cyan, .pink, .purple, .orange, .green, .blue],
@@ -120,18 +103,11 @@ struct ContentView: View {
                     .blur(radius: circle.blur)
                     .position(circle.position)
             }
-            Text(textCueManager.currentMessage)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.82))
-                .padding(.horizontal, 36)
-                .opacity(textCueManager.isVisible ? 1.0 : 0.0)
-                .allowsHitTesting(false)
             
             VStack {
                 Spacer()
 
-               // Text("Tap or drag to create patterns\nLong press to intensify")
+                Text("Tap or drag to create patterns\nLong press to intensify")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(circles.isEmpty ? 0.7 : 0.0))
                     .font(.headline)
@@ -144,73 +120,72 @@ struct ContentView: View {
                 .font(.headline)
                 .animation(.easeOut(duration: 0.4), value: circles.isEmpty)
             VStack {
-                HStack(spacing: 10) {
-                    Button("Calm") {
-                        AmbientAudioManager.shared.transition(to: .idle)
-                    }
-                    .pillButtonStyle()
+                HStack {
+                    Spacer()
 
-                    Button("Flow") {
-                        AmbientAudioManager.shared.transition(to: .normal)
-                    }
-                    .pillButtonStyle()
-
-                    Button("Mood") {
+                    Button("Color") {
                         selectedPaletteIndex = (selectedPaletteIndex + 1) % palettes.count
-                        AmbientAudioManager.shared.transition(to: .slowTouch)
                     }
-                    .pillButtonStyle()
-
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
+                    )
                     Button("Reset") {
                         circles.removeAll()
-                        AmbientAudioManager.shared.transition(to: .reset)
                     }
-                    .pillButtonStyle()
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .padding(.trailing)
                 }
-                .padding(.top, 28)
-                .opacity(0.85)
-
+                .overlay(
+                    Capsule().stroke(.white.opacity(0.15), lineWidth: 1)
+                )
                 Spacer()
             }
         }
         .contentShape(Rectangle())
+        .onTapGesture { location in
+            addBurst(at: location)
+            AmbientAudioManager.shared.transition(to: .activeGesture)
+            scheduleIdleAudioReturn(after: 3.0)
+        }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    if lastDragLocation == nil {
-                        addBurst(at: value.location)
-                        lastDragLocation = value.location
-                        lastDragTime = Date()
-                        ToneGroupManager.shared.triggerToneGroup()
-                    } else {
-                        addTrailBurst(at: value.location)
-                    }
+                    addTrailBurst(at: value.location)
+                    updateAmbientForDrag(at: value.location)
+                    scheduleIdleAudioReturn(after: 3.0)
                 }
                 .onEnded { _ in
                     lastDragLocation = nil
                     lastDragTime = nil
+                    AmbientAudioManager.shared.transition(to: .normal)
+                    scheduleIdleAudioReturn(after: 4.0)
                 }
         )
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.45)
                 .onEnded { _ in
-                    deepenSound()
                     intensifyField()
+                    AmbientAudioManager.shared.transition(to: .activeGesture)
+                    scheduleIdleAudioReturn(after: 4.0)
                 }
         )
         .onAppear {
-//            let files = Bundle.main.urls(forResourcesWithExtension: "m4a", subdirectory: nil)
-//            print("Audio files in bundle:", files ?? [])
             AmbientAudioManager.shared.startDefaultAmbient()
-            TextCueManager.shared.startSession()
             withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
                 gradientShift = 0.45
             }
         }
         .onDisappear {
-            deepenResetWorkItem?.cancel()
             AmbientAudioManager.shared.stopAll()
-            TextCueManager.shared.stopSession()
         }
         .onReceive(
             Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
@@ -219,29 +194,6 @@ struct ContentView: View {
         }
         
     }
-    
-    private func deepenSound() {
-        let now = Date()
-
-        if let lastDeepenCueDate,
-           now.timeIntervalSince(lastDeepenCueDate) < 8.0 {
-            return
-        }
-
-        lastDeepenCueDate = now
-        AmbientAudioManager.shared.transition(to: .deep)
-        TextCueManager.shared.show("Let the sound deepen.")
-
-        deepenResetWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem {
-            AmbientAudioManager.shared.transition(to: .normal)
-        }
-
-        deepenResetWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: workItem)
-    }
-    
     
     private func updateAmbientForDrag(at location: CGPoint) {
         let now = Date()

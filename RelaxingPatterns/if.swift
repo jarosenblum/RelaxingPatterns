@@ -70,6 +70,8 @@ struct ContentView: View {
     @State private var idleResetWorkItem: DispatchWorkItem?
     @State private var lastDeepenCueDate: Date?
     @State private var deepenResetWorkItem: DispatchWorkItem?
+    @State private var tapTimestamps: [Date] = []
+    @State private var lastPacingCueDate: Date?
     @StateObject private var textCueManager = TextCueManager.shared
     
     private let palettes: [[Color]] = [
@@ -199,6 +201,18 @@ struct ContentView: View {
                         AmbientAudioManager.shared.transition(to: .reset)
                     }
                     .pillButtonStyle()
+
+#if DEBUG
+                    Button("Test Shift") {
+                        AmbientAudioManager.shared.testPhaseOneShift()
+                    }
+                    .pillButtonStyle()
+
+                    Button("Reset Shift") {
+                        AmbientAudioManager.shared.resetPhaseOneShift()
+                    }
+                    .pillButtonStyle()
+#endif
                 }
                 .padding(.top, 28)
                 .opacity(0.85)
@@ -214,6 +228,7 @@ struct ContentView: View {
                         addBurst(at: value.location)
                         lastDragLocation = value.location
                         lastDragTime = Date()
+                        recordTapPace()
                         ToneGroupManager.shared.triggerToneGroup()
                     } else {
                         addTrailBurst(at: value.location)
@@ -251,6 +266,26 @@ struct ContentView: View {
             moveCircles()
         }
         
+    }
+    
+    private func recordTapPace() {
+        let now = Date()
+        tapTimestamps.append(now)
+        tapTimestamps.removeAll { now.timeIntervalSince($0) > 4.0 }
+
+        if let lastPacingCueDate,
+           now.timeIntervalSince(lastPacingCueDate) < 90.0 {
+            return
+        }
+
+        let tapsInOneSecond = tapTimestamps.filter { now.timeIntervalSince($0) <= 1.0 }.count
+        let tapsInFourSeconds = tapTimestamps.count
+
+        guard tapsInOneSecond > 3 || tapsInFourSeconds > 8 else { return }
+
+        if TextCueManager.shared.showPacingCue() {
+            lastPacingCueDate = now
+        }
     }
     
     private func deepenSound() {

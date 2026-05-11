@@ -16,15 +16,73 @@ final class AmbientAudioManager {
 
     static let shared = AmbientAudioManager()
 
-    private var players: [AmbientState: AVAudioPlayer] = [:]
-    private var currentState: AmbientState?
-    private var fadeTimer: Timer?
-
-    private init() {
-        loadPlayers()
+    private struct AmbientLoop {
+        let file: AVAudioFile
+        let node: AVAudioPlayerNode
     }
 
-    private func loadPlayers() {
+    private struct EvolutionStage {
+        let time: TimeInterval
+        let highShelfGain: Float
+        let lowShelfGain: Float
+        let reverbMix: Float
+    }
+
+    private var loops: [AmbientState: AmbientLoop] = [:]
+    private let engine = AVAudioEngine()
+    private let ambientMixer = AVAudioMixerNode()
+    private let evolutionEQ = AVAudioUnitEQ(numberOfBands: 2)
+    private let evolutionReverb = AVAudioUnitReverb()
+    private var currentState: AmbientState?
+    private var fadeTimer: Timer?
+    private var evolutionTimer: Timer?
+    private var currentHighShelfGain: Float = 0
+    private var currentLowShelfGain: Float = 0
+    private var currentReverbMix: Float = 2
+    private var targetHighShelfGain: Float = 0
+    private var targetLowShelfGain: Float = 0
+    private var targetReverbMix: Float = 2
+
+    private let evolutionStages: [EvolutionStage] = [
+        EvolutionStage(time: 0, highShelfGain: 0.0, lowShelfGain: 0.0, reverbMix: 2.0),
+        EvolutionStage(time: 300, highShelfGain: -0.8, lowShelfGain: 0.12, reverbMix: 2.8),
+        EvolutionStage(time: 600, highShelfGain: -1.25, lowShelfGain: 0.2, reverbMix: 3.4),
+        EvolutionStage(time: 1200, highShelfGain: -1.55, lowShelfGain: 0.26, reverbMix: 3.8)
+    ]
+
+    private init() {
+        configureEngine()
+        loadLoops()
+    }
+
+    private func configureEngine() {
+        engine.attach(ambientMixer)
+        engine.attach(evolutionEQ)
+        engine.attach(evolutionReverb)
+
+        let highShelf = evolutionEQ.bands[0]
+        highShelf.filterType = .highShelf
+        highShelf.frequency = 4200
+        highShelf.bandwidth = 0.5
+        highShelf.gain = currentHighShelfGain
+        highShelf.bypass = false
+
+        let lowShelf = evolutionEQ.bands[1]
+        lowShelf.filterType = .lowShelf
+        lowShelf.frequency = 240
+        lowShelf.bandwidth = 0.6
+        lowShelf.gain = currentLowShelfGain
+        lowShelf.bypass = false
+
+        evolutionReverb.loadFactoryPreset(.mediumHall)
+        evolutionReverb.wetDryMix = currentReverbMix
+
+        engine.connect(ambientMixer, to: evolutionEQ, format: nil)
+        engine.connect(evolutionEQ, to: evolutionReverb, format: nil)
+        engine.connect(evolutionReverb, to: engine.mainMixerNode, format: nil)
+    }
+
+    private func loadLoops() {
         let files: [AmbientState: String] = [
             .idle: "ambient_segment_01_165s",
             .normal: "ambient_segment_05_25s",
@@ -42,11 +100,12 @@ final class AmbientAudioManager {
             }
 
             do {
-                let player = try AVAudioPlayer(contentsOf: url)
-                player.numberOfLoops = -1
-                player.volume = 0.0
-                player.prepareToPlay()
-                players[state] = player
+                let file = try AVAudioFile(forReading: url)
+                let node = AVAudioPlayerNode()
+                node.volume = 0.0
+                engine.attach(node)
+                engine.connect(node, to: ambientMixer, format: file.processingFormat)
+                loops[state] = AmbientLoop(file: file, node: node)
             } catch {
                 print("Failed to load \(fileName): \(error)")
             }
@@ -54,24 +113,24 @@ final class AmbientAudioManager {
     }
 
     func startDefaultAmbient() {
+        startEngineIfNeeded()
+        startEvolutionDriftIfNeeded()
         transition(to: .normal)
     }
 
     func transition(to newState: AmbientState) {
         guard newState != currentState else { return }
-        guard let newPlayer = players[newState] else { return }
+        guard let newLoop = loops[newState] else { return }
 
-        let oldPlayer = currentState.flatMap { players[$0] }
+        startEngineIfNeeded()
 
-        if !newPlayer.isPlaying {
-            newPlayer.volume = 0
-            newPlayer.play()
-        }
+        let oldLoop = currentState.flatMap { loops[$0] }
+        startLoop(for: newState)
 
         currentState = newState
         crossfade(
-            from: oldPlayer,
-            to: newPlayer,
+            from: oldLoop?.node,
+            to: newLoop.node,
             duration: fadeDuration(for: newState),
             targetState: newState
         )
@@ -79,33 +138,57 @@ final class AmbientAudioManager {
 
     func stopAll(fadeOut: TimeInterval = 2.0) {
         fadeTimer?.invalidate()
-        players.values.forEach {
-            $0.stop()
-            $0.volume = 0
+        evolutionTimer?.invalidate()
+        evolutionTimer = nil
+        loops.values.forEach { loop in
+            loop.node.stop()
+            loop.node.volume = 0
         }
         currentState = nil
     }
 
+    func updateEvolution(elapsed: TimeInterval) {
+        let target = evolutionTarget(for: elapsed)
+
+        targetHighShelfGain = target.highShelfGain
+        targetLowShelfGain = target.lowShelfGain
+        targetReverbMix = target.reverbMix
+        startEvolutionDriftIfNeeded()
+    }
+
+#if DEBUG
+    func testPhaseOneShift() {
+        let target = evolutionTarget(for: 300)
+        targetHighShelfGain = target.highShelfGain
+        targetLowShelfGain = target.lowShelfGain
+        targetReverbMix = target.reverbMix
+        startEvolutionDriftIfNeeded()
+    }
+
+    func resetPhaseOneShift() {
+        let target = evolutionTarget(for: 0)
+        targetHighShelfGain = target.highShelfGain
+        targetLowShelfGain = target.lowShelfGain
+        targetReverbMix = target.reverbMix
+        startEvolutionDriftIfNeeded()
+    }
+#endif
+
     private func crossfade(
-        from oldPlayer: AVAudioPlayer?,
-        to newPlayer: AVAudioPlayer,
+        from oldPlayer: AVAudioPlayerNode?,
+        to newPlayer: AVAudioPlayerNode,
         duration: TimeInterval,
         targetState: AmbientState
     ) {
         fadeTimer?.invalidate()
 
-        if !newPlayer.isPlaying {
-            newPlayer.volume = 0
-            newPlayer.play()
-        }
-        
         let steps = 60
         let interval = duration / Double(steps)
-        let oldStartVolume = oldPlayer?.volume ?? 0
+        let oldStartVolume = oldPlayer?.volume ?? 0.0
         let volumeTarget = targetVolume(for: targetState)
         var step = 0
         
-        fadeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             Task { @MainActor in
                 step += 1
                 let progress = min(Double(step) / Double(steps), 1.0)
@@ -120,11 +203,10 @@ final class AmbientAudioManager {
                     self.fadeTimer?.invalidate()
                     self.fadeTimer = nil
                     
-                    for (state, player) in self.players {
+                    for (state, loop) in self.loops {
                         if state != self.currentState {
-                            player.stop()
-                            player.currentTime = 0
-                            player.volume = 0.0
+                            loop.node.stop()
+                            loop.node.volume = 0.0
                         }
                     }
                     
@@ -133,6 +215,66 @@ final class AmbientAudioManager {
             }
         }
         }
+
+    private func startEngineIfNeeded() {
+        guard !engine.isRunning else { return }
+
+        do {
+            try engine.start()
+        } catch {
+            print("Failed to start ambient engine: \(error)")
+        }
+    }
+
+    private func startEvolutionDriftIfNeeded() {
+        guard evolutionTimer == nil else { return }
+
+        evolutionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in
+                self.driftEvolutionTowardTarget()
+            }
+        }
+    }
+
+    private func startLoop(for state: AmbientState) {
+        guard let loop = loops[state] else { return }
+
+        if !loop.node.isPlaying {
+            loop.node.volume = 0
+            scheduleLoop(for: state)
+            loop.node.play()
+        }
+    }
+
+    private func scheduleLoop(for state: AmbientState) {
+        guard let loop = loops[state] else { return }
+
+        loop.node.scheduleFile(loop.file, at: nil) {
+            Task { @MainActor in
+                guard self.loops[state]?.node.isPlaying == true else { return }
+
+                self.scheduleLoop(for: state)
+            }
+        }
+    }
+
+    private func evolutionTarget(for elapsed: TimeInterval) -> EvolutionStage {
+        guard let first = evolutionStages.first else {
+            return EvolutionStage(time: 0, highShelfGain: 0, lowShelfGain: 0, reverbMix: 2)
+        }
+
+        return evolutionStages.last(where: { elapsed >= $0.time }) ?? first
+    }
+
+    private func driftEvolutionTowardTarget() {
+        currentHighShelfGain += (targetHighShelfGain - currentHighShelfGain) * 0.025
+        currentLowShelfGain += (targetLowShelfGain - currentLowShelfGain) * 0.025
+        currentReverbMix += (targetReverbMix - currentReverbMix) * 0.025
+
+        evolutionEQ.bands[0].gain = currentHighShelfGain
+        evolutionEQ.bands[1].gain = currentLowShelfGain
+        evolutionReverb.wetDryMix = currentReverbMix
+    }
 
     private func targetVolume(for state: AmbientState) -> Float {
         switch state {
@@ -166,16 +308,16 @@ final class AmbientAudioManager {
     }
     
     func duckAmbient(duration: TimeInterval = 1.5) {
-        players.values.forEach { player in
-            if player.isPlaying {
-                player.volume *= 0.7
+        loops.values.forEach { loop in
+            if loop.node.isPlaying {
+                loop.node.volume *= 0.7
             }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
             if let state = self.currentState,
-               let player = self.players[state] {
-                player.volume = self.targetVolume(for: state)
+               let loop = self.loops[state] {
+                loop.node.volume = self.targetVolume(for: state)
             }
         }
     }

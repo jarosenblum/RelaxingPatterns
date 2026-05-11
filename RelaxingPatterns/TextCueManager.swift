@@ -14,6 +14,11 @@ import Combine
 final class TextCueManager: ObservableObject {
     static let shared = TextCueManager()
 
+    private struct CueMessage {
+        let message: String
+        let visibleDuration: TimeInterval
+    }
+
     @Published var currentMessage: String = ""
     @Published var isVisible: Bool = false
     @Published private(set) var sessionElapsed: TimeInterval = 0
@@ -22,7 +27,7 @@ final class TextCueManager: ObservableObject {
     private var timer: Timer?
     private var shownMilestones: Set<TimeInterval> = []
     private var cueGeneration = 0
-    private var pendingMessages: [String] = []
+    private var pendingMessages: [CueMessage] = []
     private var isProcessingCue = false
     private let fadeInDuration = 1.4
     private let fadeOutDuration = 1.8
@@ -31,8 +36,8 @@ final class TextCueManager: ObservableObject {
     private let openingCues = [
         "Welcome.",
         "Take 1 minute… or 5.",
-        "Tap Gently",
-        "Pause the endless scroll.",
+        "Tap gently.",
+        "Tap slowly. Pause the endless scroll.",
         "You are Ok. This is all there is right now. Just tap."
     ]
 
@@ -91,6 +96,7 @@ final class TextCueManager: ObservableObject {
     private func tick() {
         let elapsed = Date().timeIntervalSince(sessionStart)
         sessionElapsed = elapsed
+        AmbientAudioManager.shared.updateEvolution(elapsed: elapsed)
 
         if let milestone = milestoneCues.first(where: { elapsed >= $0.time && !shownMilestones.contains($0.time) }) {
             shownMilestones.insert(milestone.time)
@@ -127,8 +133,21 @@ final class TextCueManager: ObservableObject {
     }
 
     func show(_ message: String) {
-        pendingMessages.append(message)
+        pendingMessages.append(CueMessage(message: message, visibleDuration: visibleDuration))
         processNextCueIfNeeded()
+    }
+
+    func showPacingCue() -> Bool {
+        guard !isProcessingCue, pendingMessages.isEmpty else { return false }
+
+        let cue = [
+            "Notice what happens when you slow down.",
+            "Let the patterns drift a little longer."
+        ].randomElement() ?? "Let the patterns drift a little longer."
+
+        pendingMessages.append(CueMessage(message: cue, visibleDuration: 8.0))
+        processNextCueIfNeeded()
+        return true
     }
 
     private func processNextCueIfNeeded() {
@@ -136,15 +155,15 @@ final class TextCueManager: ObservableObject {
 
         cueGeneration += 1
         let generation = cueGeneration
-        let message = pendingMessages.removeFirst()
+        let cue = pendingMessages.removeFirst()
         isProcessingCue = true
-        currentMessage = message
+        currentMessage = cue.message
 
         withAnimation(.easeInOut(duration: fadeInDuration)) {
             isVisible = true
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + fadeInDuration + visibleDuration) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + fadeInDuration + cue.visibleDuration) {
             guard generation == self.cueGeneration else { return }
 
             withAnimation(.easeInOut(duration: self.fadeOutDuration)) {

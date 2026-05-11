@@ -35,6 +35,31 @@ extension View {
             .fixedSize()
     }
 }
+
+struct SessionTimeIndicator: View {
+    let elapsed: TimeInterval
+
+    private let milestones: [TimeInterval] = [30, 60, 120, 180, 300, 600, 1200]
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Capsule()
+                .fill(.white.opacity(0.24))
+                .frame(width: 18, height: 2)
+
+            ForEach(milestones, id: \.self) { milestone in
+                Circle()
+                    .fill(.white.opacity(elapsed >= milestone ? 0.68 : 0.18))
+                    .frame(width: 4, height: 4)
+                    .animation(.easeInOut(duration: 1.2), value: elapsed >= milestone)
+            }
+        }
+        .opacity(0.72)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct ContentView: View {
     
     @State private var circles: [SoftCircle] = []
@@ -120,6 +145,14 @@ struct ContentView: View {
                     .blur(radius: circle.blur)
                     .position(circle.position)
             }
+            VStack {
+                SessionTimeIndicator(elapsed: textCueManager.sessionElapsed)
+                    .padding(.top, 10)
+
+                Spacer()
+            }
+            .allowsHitTesting(false)
+
             Text(textCueManager.currentMessage)
                 .font(.system(size: 24, weight: .medium, design: .rounded))
                 .multilineTextAlignment(.center)

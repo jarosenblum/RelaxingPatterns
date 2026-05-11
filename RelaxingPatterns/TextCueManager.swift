@@ -16,6 +16,7 @@ final class TextCueManager: ObservableObject {
 
     @Published var currentMessage: String = ""
     @Published var isVisible: Bool = false
+    @Published private(set) var sessionElapsed: TimeInterval = 0
 
     private var sessionStart = Date()
     private var timer: Timer?
@@ -40,7 +41,7 @@ final class TextCueManager: ObservableObject {
         "Gently tap and drag...and hear what changes.",
         "Watch the patterns move away.",
         "Let your attention follow the circles.",
-        "Press into the screen to deepen the sound"
+        "Tap and hold to deepen the sound"
     ]
 
     private let sparseCues = [
@@ -52,8 +53,8 @@ final class TextCueManager: ObservableObject {
     ]
     
     private let milestoneCues: [(time: TimeInterval, message: String)] = [
-        (30, "You’ve been here for 30 seconds."),
-        (60, "You’ve been here for 1 minute."),
+        (60, "Let your breath slow naturally."),
+        (180, "3 minutes. Let your breath slow naturally."),
         (300, "5 minutes have passed. You’re doing great."),
         (600, "10 minutes. Notice if anything feels quieter."),
         (1200, "20 minutes. You gave yourself real space.")
@@ -63,6 +64,7 @@ final class TextCueManager: ObservableObject {
 
     func startSession() {
         sessionStart = Date()
+        sessionElapsed = 0
         shownMilestones.removeAll()
         pendingMessages.removeAll()
         isProcessingCue = false
@@ -88,6 +90,7 @@ final class TextCueManager: ObservableObject {
 
     private func tick() {
         let elapsed = Date().timeIntervalSince(sessionStart)
+        sessionElapsed = elapsed
 
         if let milestone = milestoneCues.first(where: { elapsed >= $0.time && !shownMilestones.contains($0.time) }) {
             shownMilestones.insert(milestone.time)
@@ -116,6 +119,7 @@ final class TextCueManager: ObservableObject {
 
     private func maybeShowSparseCue() {
         // Approximately one sparse cue every ~30 seconds
+        guard Date().timeIntervalSince(sessionStart) >= 300 else { return }
         guard Int(Date().timeIntervalSince(sessionStart)) % 30 == 0 else { return }
 
         let cue = sparseCues.randomElement() ?? "Stay with the motion."

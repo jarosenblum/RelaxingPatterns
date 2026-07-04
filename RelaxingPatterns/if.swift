@@ -20,6 +20,7 @@ struct SoftCircle: Identifiable {
     let driftY: CGFloat
     let isTrail: Bool
 }
+
 extension View {
     func pillButtonStyle() -> some View {
         self
@@ -38,8 +39,6 @@ extension View {
 
 struct SessionTimeIndicator: View {
     let elapsed: TimeInterval
-    let breathPhase: Double
-    let showsBreathIndicator: Bool
 
     private let milestones: [TimeInterval] = [30, 60, 120, 180, 300, 600, 1200]
 
@@ -55,19 +54,6 @@ struct SessionTimeIndicator: View {
                     .frame(width: 4, height: 4)
                     .animation(.easeInOut(duration: 1.2), value: elapsed >= milestone)
             }
-
-            if showsBreathIndicator {
-                Circle()
-                    .fill(.white.opacity(0.10 + breathPhase * 0.18))
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(0.85 + breathPhase * 0.55)
-                    .overlay(
-                        Circle()
-                            .stroke(.white.opacity(0.30 + breathPhase * 0.24), lineWidth: 1)
-                    )
-                    .shadow(color: .white.opacity(breathPhase * 0.16), radius: 4)
-                    .animation(.easeInOut(duration: 0.35), value: breathPhase)
-            }
         }
         .opacity(0.72)
         .allowsHitTesting(false)
@@ -76,24 +62,17 @@ struct SessionTimeIndicator: View {
 }
 
 struct ContentView: View {
-    
     @State private var circles: [SoftCircle] = []
     @State private var selectedPaletteIndex: Int = 0
     @State private var gradientShift: CGFloat = 0
     @State private var lastDragLocation: CGPoint?
     @State private var lastDragTime: Date?
-    @State private var idleResetWorkItem: DispatchWorkItem?
     @State private var lastDeepenCueDate: Date?
     @State private var deepenResetWorkItem: DispatchWorkItem?
     @State private var tapTimestamps: [Date] = []
     @State private var lastPacingCueDate: Date?
     @StateObject private var textCueManager = TextCueManager.shared
-    @StateObject private var breathPhaseEngine = BreathPhaseEngine()
-#if DEBUG
-    @StateObject private var microphoneBreathDetector = ExperimentalMicrophoneBreathDetector.shared
-#endif
-    @AppStorage("breathAwareAmbienceEnabled") private var isBreathAwareAmbienceEnabled = false
-    
+
     private let palettes: [[Color]] = [
         [.cyan, .pink, .purple, .orange, .green, .blue],
         [.cyan, .blue, .purple, .pink],
@@ -105,16 +84,7 @@ struct ContentView: View {
     private var colors: [Color] {
         palettes[selectedPaletteIndex]
     }
-    private var breathPhaseForAmbience: Double {
-#if DEBUG
-        isBreathAwareAmbienceEnabled ? microphoneBreathDetector.micBreathPhase : 0
-#else
-        isBreathAwareAmbienceEnabled ? breathPhaseEngine.breathPhase : 0
-#endif
-    }
-    private var breathVisualPhase: CGFloat {
-        CGFloat(breathPhaseForAmbience)
-    }
+
     private var backgroundColors: [Color] {
         switch selectedPaletteIndex {
         case 0:
@@ -149,6 +119,7 @@ struct ContentView: View {
             ]
         }
     }
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -158,35 +129,24 @@ struct ContentView: View {
             )
             .animation(.easeInOut(duration: 0.45), value: selectedPaletteIndex)
             .ignoresSafeArea()
+
             Circle()
-            // keep tint, just nudge presence
-            .fill(colors.first?.opacity(0.07) ?? Color.white.opacity(0.07))
-            .frame(
-                width: 460 + breathVisualPhase * 34,
-                height: 460 + breathVisualPhase * 34
-            )   // a bit larger = softer gradient
-            .blur(radius: 110)                 // more diffuse = less hotspot
-                .frame(width: 420, height: 420)
-                .blur(radius: 90)
-                .offset(
-                    x: gradientShift * 220 - 90 + breathVisualPhase * 8,
-                    y: gradientShift * 160 - 70 + breathVisualPhase * 6
-                )
+                .fill(colors.first?.opacity(0.07) ?? Color.white.opacity(0.07))
+                .frame(width: 460, height: 460)
+                .blur(radius: 110)
+                .offset(x: gradientShift * 220 - 90, y: gradientShift * 160 - 70)
                 .allowsHitTesting(false)
+
             ForEach(circles) { circle in
                 Circle()
                     .fill(circle.color.opacity(circle.opacity))
                     .frame(width: circle.size, height: circle.size)
                     .blur(radius: circle.blur)
                     .position(circle.position)
-                    .scaleEffect(0.99 + breathVisualPhase * 0.035)
             }
+
             VStack {
-                SessionTimeIndicator(
-                    elapsed: textCueManager.sessionElapsed,
-                    breathPhase: breathPhaseForAmbience,
-                    showsBreathIndicator: isBreathAwareAmbienceEnabled
-                )
+                SessionTimeIndicator(elapsed: textCueManager.sessionElapsed)
                     .padding(.top, 10)
 
                 Spacer()
@@ -206,93 +166,35 @@ struct ContentView: View {
                     .allowsHitTesting(false)
             }
             .allowsHitTesting(false)
-            
-            VStack {
-                Spacer()
 
-               // Text("Tap or drag to create patterns\nLong press to intensify")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.white.opacity(circles.isEmpty ? 0.7 : 0.0))
-                    .font(.headline)
-                    .padding(.horizontal, 30)
-                    .animation(.easeOut(duration: 0.4), value: circles.isEmpty)
-
-                Spacer()
-            }
-                .foregroundStyle(.white.opacity(circles.isEmpty ? 0.7 : 0.0))
-                .font(.headline)
-                .animation(.easeOut(duration: 0.4), value: circles.isEmpty)
             VStack {
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
-                    Button("Calm") {
-                        AmbientAudioManager.shared.transition(to: .idle)
-                    }
-                    .pillButtonStyle()
+                        Button("Calm") {
+                            AmbientAudioManager.shared.transition(to: .idle)
+                        }
+                        .pillButtonStyle()
 
-                    Button("Flow") {
-                        AmbientAudioManager.shared.transition(to: .normal)
-                    }
-                    .pillButtonStyle()
+                        Button("Flow") {
+                            AmbientAudioManager.shared.transition(to: .normal)
+                        }
+                        .pillButtonStyle()
 
-                    Button("Mood") {
-                        selectedPaletteIndex = (selectedPaletteIndex + 1) % palettes.count
-                        AmbientAudioManager.shared.transition(to: .slowTouch)
-                    }
-                    .pillButtonStyle()
+                        Button("Mood") {
+                            selectedPaletteIndex = (selectedPaletteIndex + 1) % palettes.count
+                            AmbientAudioManager.shared.transition(to: .slowTouch)
+                        }
+                        .pillButtonStyle()
 
-                    Button("Reset") {
-                        circles.removeAll()
-                        AmbientAudioManager.shared.transition(to: .reset)
+                        Button("Reset") {
+                            circles.removeAll()
+                            AmbientAudioManager.shared.transition(to: .reset)
+                        }
+                        .pillButtonStyle()
                     }
-                    .pillButtonStyle()
-                    }
-
-#if DEBUG
-                    HStack(spacing: 10) {
-                    Button("Test Shift") {
-                        AmbientAudioManager.shared.testPhaseOneShift()
-                    }
-                    .pillButtonStyle()
-
-                    Button("Reset Shift") {
-                        AmbientAudioManager.shared.resetPhaseOneShift()
-                    }
-                    .pillButtonStyle()
-                    }
-#endif
                 }
                 .padding(.top, 28)
                 .opacity(0.85)
-
-                Toggle("Breath-Aware Ambience", isOn: $isBreathAwareAmbienceEnabled)
-                    .toggleStyle(.switch)
-                    .tint(.white.opacity(0.34))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
-                    .scaleEffect(0.82)
-                    .fixedSize()
-                .padding(.top, 5)
-                .allowsHitTesting(true)
-
-#if DEBUG
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(microphoneBreathDetector.status == .running ? .green.opacity(0.55) : .white.opacity(0.22))
-                        .frame(width: 5, height: 5)
-
-                    Text(microphoneBreathDetector.status.rawValue)
-
-                    Text(String(format: "phase %.2f amp %.3f range %.3f",
-                                microphoneBreathDetector.micBreathPhase,
-                                microphoneBreathDetector.latestValues.smoothedAmplitude,
-                                microphoneBreathDetector.debugPhaseCeiling - microphoneBreathDetector.debugPhaseFloor))
-                }
-                .font(.system(size: 8, weight: .medium))
-                .foregroundStyle(.white.opacity(0.48))
-                .padding(.top, 3)
-                .allowsHitTesting(false)
-#endif
 
                 Spacer()
             }
@@ -324,68 +226,24 @@ struct ContentView: View {
                 }
         )
         .onAppear {
-//            let files = Bundle.main.urls(forResourcesWithExtension: "m4a", subdirectory: nil)
-//            print("Audio files in bundle:", files ?? [])
-#if DEBUG
-            isBreathAwareAmbienceEnabled = false
-            ExperimentalMicrophoneBreathDetector.shared.stop()
-#endif
             AmbientAudioManager.shared.startDefaultAmbient()
             TextCueManager.shared.startSession()
-            refreshBreathAwareAmbienceOnStart()
             withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
                 gradientShift = 0.45
             }
         }
         .onDisappear {
             deepenResetWorkItem?.cancel()
-#if DEBUG
-            ExperimentalMicrophoneBreathDetector.shared.stop()
-#endif
             AmbientAudioManager.shared.stopAll()
             TextCueManager.shared.stopSession()
         }
         .onReceive(
             Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
         ) { _ in
-            if isBreathAwareAmbienceEnabled {
-                breathPhaseEngine.update()
-            }
             moveCircles()
         }
-        .onChange(of: isBreathAwareAmbienceEnabled) { _, isEnabled in
-            breathPhaseEngine.reset()
-
-            if isEnabled {
-#if DEBUG
-                ExperimentalMicrophoneBreathDetector.shared.start()
-#else
-                breathPhaseEngine.update()
-#endif
-                TextCueManager.shared.showInstruction(
-                    "Breath-aware ambience gently follows a slow breathing rhythm. It is intended only for relaxation."
-                )
-            } else {
-#if DEBUG
-                ExperimentalMicrophoneBreathDetector.shared.stop()
-#endif
-            }
-        }
-        
     }
-    
-    private func refreshBreathAwareAmbienceOnStart() {
-        breathPhaseEngine.reset()
 
-        guard isBreathAwareAmbienceEnabled else { return }
-
-#if DEBUG
-        ExperimentalMicrophoneBreathDetector.shared.start()
-#else
-        breathPhaseEngine.update()
-#endif
-    }
-    
     private func recordTapPace() {
         let now = Date()
         tapTimestamps.append(now)
@@ -405,7 +263,7 @@ struct ContentView: View {
             lastPacingCueDate = now
         }
     }
-    
+
     private func deepenSound() {
         let now = Date()
 
@@ -427,56 +285,17 @@ struct ContentView: View {
         deepenResetWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: workItem)
     }
-    
-    
-    private func updateAmbientForDrag(at location: CGPoint) {
-        let now = Date()
-        let velocity: CGFloat
-
-        if let lastDragLocation, let lastDragTime {
-            let dx = location.x - lastDragLocation.x
-            let dy = location.y - lastDragLocation.y
-            let distance = sqrt(dx * dx + dy * dy)
-            let elapsed = max(now.timeIntervalSince(lastDragTime), 0.016)
-            velocity = distance / elapsed
-        } else {
-            velocity = 0
-        }
-
-        lastDragLocation = location
-        lastDragTime = now
-
-        let state = AmbientAudioManager.shared.stateForGesture(
-            touchVelocity: velocity,
-            isPressing: false,
-            isIdle: false
-        )
-        AmbientAudioManager.shared.transition(to: state)
-    }
-
-    private func scheduleIdleAudioReturn(after delay: TimeInterval) {
-        idleResetWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem {
-            AmbientAudioManager.shared.transition(to: .idle)
-        }
-
-        idleResetWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-    }
 
     private func addBurst(at location: CGPoint) {
         let newCircles = (0..<9).map { _ in
             let jitterX = CGFloat.random(in: -45...45)
             let jitterY = CGFloat.random(in: -45...45)
-            
+
             return SoftCircle(
-                
                 position: CGPoint(
                     x: location.x + jitterX,
                     y: location.y + jitterY
                 ),
-                
                 size: CGFloat.random(in: 40...150),
                 color: colors.randomElement() ?? .cyan,
                 opacity: Double.random(in: 0.15...0.45),
@@ -486,20 +305,21 @@ struct ContentView: View {
                 isTrail: false
             )
         }
-        
+
         withAnimation(.easeOut(duration: 0.35)) {
             circles.append(contentsOf: newCircles)
         }
-        
+
         if circles.count > 120 {
             circles.removeFirst(circles.count - 120)
         }
     }
+
     private func addTrailBurst(at location: CGPoint) {
         let newCircles = (0..<5).map { _ in
             let jitterX = CGFloat.random(in: -25...25)
             let jitterY = CGFloat.random(in: -25...25)
-            
+
             return SoftCircle(
                 position: CGPoint(
                     x: location.x + jitterX,
@@ -514,31 +334,31 @@ struct ContentView: View {
                 isTrail: true
             )
         }
-        
+
         withAnimation(.easeOut(duration: 0.25)) {
             circles.append(contentsOf: newCircles)
         }
-        
+
         if circles.count > 120 {
             circles.removeFirst(circles.count - 120)
         }
     }
-    private func moveCircles() {
-        let breathMotionScale = 0.96 + breathPhaseEngine.breathPhase * 0.08
 
+    private func moveCircles() {
         for index in circles.indices {
-            circles[index].position.x += circles[index].driftX * breathMotionScale
-            circles[index].position.y += circles[index].driftY * breathMotionScale
+            circles[index].position.x += circles[index].driftX
+            circles[index].position.y += circles[index].driftY
 
             if circles[index].isTrail {
-                circles[index].opacity *= 0.995   // slower fade
+                circles[index].opacity *= 0.995
             } else {
-                circles[index].opacity *= 0.982   // faster fade
+                circles[index].opacity *= 0.982
             }
         }
 
         circles.removeAll { $0.opacity < 0.02 }
     }
+
     private func intensifyField() {
         withAnimation(.easeOut(duration: 0.45)) {
             for index in circles.indices {

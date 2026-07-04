@@ -38,6 +38,8 @@ extension View {
 
 struct SessionTimeIndicator: View {
     let elapsed: TimeInterval
+    let breathPhase: Double
+    let showsBreathIndicator: Bool
 
     private let milestones: [TimeInterval] = [30, 60, 120, 180, 300, 600, 1200]
 
@@ -52,6 +54,19 @@ struct SessionTimeIndicator: View {
                     .fill(.white.opacity(elapsed >= milestone ? 0.68 : 0.18))
                     .frame(width: 4, height: 4)
                     .animation(.easeInOut(duration: 1.2), value: elapsed >= milestone)
+            }
+
+            if showsBreathIndicator {
+                Circle()
+                    .fill(.white.opacity(0.10 + breathPhase * 0.18))
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(0.85 + breathPhase * 0.55)
+                    .overlay(
+                        Circle()
+                            .stroke(.white.opacity(0.30 + breathPhase * 0.24), lineWidth: 1)
+                    )
+                    .shadow(color: .white.opacity(breathPhase * 0.16), radius: 4)
+                    .animation(.easeInOut(duration: 0.35), value: breathPhase)
             }
         }
         .opacity(0.72)
@@ -73,6 +88,11 @@ struct ContentView: View {
     @State private var tapTimestamps: [Date] = []
     @State private var lastPacingCueDate: Date?
     @StateObject private var textCueManager = TextCueManager.shared
+    @StateObject private var breathPhaseEngine = BreathPhaseEngine()
+#if DEBUG
+    @StateObject private var microphoneBreathDetector = ExperimentalMicrophoneBreathDetector.shared
+#endif
+    @AppStorage("breathAwareAmbienceEnabled") private var isBreathAwareAmbienceEnabled = false
     
     private let palettes: [[Color]] = [
         [.cyan, .pink, .purple, .orange, .green, .blue],
@@ -84,6 +104,16 @@ struct ContentView: View {
 
     private var colors: [Color] {
         palettes[selectedPaletteIndex]
+    }
+    private var breathPhaseForAmbience: Double {
+#if DEBUG
+        isBreathAwareAmbienceEnabled ? microphoneBreathDetector.micBreathPhase : 0
+#else
+        isBreathAwareAmbienceEnabled ? breathPhaseEngine.breathPhase : 0
+#endif
+    }
+    private var breathVisualPhase: CGFloat {
+        CGFloat(breathPhaseForAmbience)
     }
     private var backgroundColors: [Color] {
         switch selectedPaletteIndex {
@@ -131,13 +161,16 @@ struct ContentView: View {
             Circle()
             // keep tint, just nudge presence
             .fill(colors.first?.opacity(0.07) ?? Color.white.opacity(0.07))
-            .frame(width: 460, height: 460)   // a bit larger = softer gradient
+            .frame(
+                width: 460 + breathVisualPhase * 34,
+                height: 460 + breathVisualPhase * 34
+            )   // a bit larger = softer gradient
             .blur(radius: 110)                 // more diffuse = less hotspot
                 .frame(width: 420, height: 420)
                 .blur(radius: 90)
                 .offset(
-                    x: gradientShift * 220 - 90,
-                    y: gradientShift * 160 - 70
+                    x: gradientShift * 220 - 90 + breathVisualPhase * 8,
+                    y: gradientShift * 160 - 70 + breathVisualPhase * 6
                 )
                 .allowsHitTesting(false)
             ForEach(circles) { circle in
@@ -146,22 +179,33 @@ struct ContentView: View {
                     .frame(width: circle.size, height: circle.size)
                     .blur(radius: circle.blur)
                     .position(circle.position)
+                    .scaleEffect(0.99 + breathVisualPhase * 0.035)
             }
             VStack {
-                SessionTimeIndicator(elapsed: textCueManager.sessionElapsed)
+                SessionTimeIndicator(
+                    elapsed: textCueManager.sessionElapsed,
+                    breathPhase: breathPhaseForAmbience,
+                    showsBreathIndicator: isBreathAwareAmbienceEnabled
+                )
                     .padding(.top, 10)
 
                 Spacer()
             }
             .allowsHitTesting(false)
 
-            Text(textCueManager.currentMessage)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.82))
-                .padding(.horizontal, 36)
-                .opacity(textCueManager.isVisible ? 1.0 : 0.0)
-                .allowsHitTesting(false)
+            GeometryReader { proxy in
+                Text(textCueManager.currentMessage)
+                    .font(.system(size: 24, weight: .medium, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: min(proxy.size.width - 48, 520))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .opacity(textCueManager.isVisible ? 1.0 : 0.0)
+                    .allowsHitTesting(false)
+            }
+            .allowsHitTesting(false)
             
             VStack {
                 Spacer()
@@ -179,7 +223,8 @@ struct ContentView: View {
                 .font(.headline)
                 .animation(.easeOut(duration: 0.4), value: circles.isEmpty)
             VStack {
-                HStack(spacing: 10) {
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
                     Button("Calm") {
                         AmbientAudioManager.shared.transition(to: .idle)
                     }
@@ -201,8 +246,10 @@ struct ContentView: View {
                         AmbientAudioManager.shared.transition(to: .reset)
                     }
                     .pillButtonStyle()
+                    }
 
 #if DEBUG
+                    HStack(spacing: 10) {
                     Button("Test Shift") {
                         AmbientAudioManager.shared.testPhaseOneShift()
                     }
@@ -212,10 +259,40 @@ struct ContentView: View {
                         AmbientAudioManager.shared.resetPhaseOneShift()
                     }
                     .pillButtonStyle()
+                    }
 #endif
                 }
                 .padding(.top, 28)
                 .opacity(0.85)
+
+                Toggle("Breath-Aware Ambience", isOn: $isBreathAwareAmbienceEnabled)
+                    .toggleStyle(.switch)
+                    .tint(.white.opacity(0.34))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .scaleEffect(0.82)
+                    .fixedSize()
+                .padding(.top, 5)
+                .allowsHitTesting(true)
+
+#if DEBUG
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(microphoneBreathDetector.status == .running ? .green.opacity(0.55) : .white.opacity(0.22))
+                        .frame(width: 5, height: 5)
+
+                    Text(microphoneBreathDetector.status.rawValue)
+
+                    Text(String(format: "phase %.2f amp %.3f range %.3f",
+                                microphoneBreathDetector.micBreathPhase,
+                                microphoneBreathDetector.latestValues.smoothedAmplitude,
+                                microphoneBreathDetector.debugPhaseCeiling - microphoneBreathDetector.debugPhaseFloor))
+                }
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.48))
+                .padding(.top, 3)
+                .allowsHitTesting(false)
+#endif
 
                 Spacer()
             }
@@ -249,23 +326,64 @@ struct ContentView: View {
         .onAppear {
 //            let files = Bundle.main.urls(forResourcesWithExtension: "m4a", subdirectory: nil)
 //            print("Audio files in bundle:", files ?? [])
+#if DEBUG
+            isBreathAwareAmbienceEnabled = false
+            ExperimentalMicrophoneBreathDetector.shared.stop()
+#endif
             AmbientAudioManager.shared.startDefaultAmbient()
             TextCueManager.shared.startSession()
+            refreshBreathAwareAmbienceOnStart()
             withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
                 gradientShift = 0.45
             }
         }
         .onDisappear {
             deepenResetWorkItem?.cancel()
+#if DEBUG
+            ExperimentalMicrophoneBreathDetector.shared.stop()
+#endif
             AmbientAudioManager.shared.stopAll()
             TextCueManager.shared.stopSession()
         }
         .onReceive(
             Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
         ) { _ in
+            if isBreathAwareAmbienceEnabled {
+                breathPhaseEngine.update()
+            }
             moveCircles()
         }
+        .onChange(of: isBreathAwareAmbienceEnabled) { _, isEnabled in
+            breathPhaseEngine.reset()
+
+            if isEnabled {
+#if DEBUG
+                ExperimentalMicrophoneBreathDetector.shared.start()
+#else
+                breathPhaseEngine.update()
+#endif
+                TextCueManager.shared.showInstruction(
+                    "Breath-aware ambience gently follows a slow breathing rhythm. It is intended only for relaxation."
+                )
+            } else {
+#if DEBUG
+                ExperimentalMicrophoneBreathDetector.shared.stop()
+#endif
+            }
+        }
         
+    }
+    
+    private func refreshBreathAwareAmbienceOnStart() {
+        breathPhaseEngine.reset()
+
+        guard isBreathAwareAmbienceEnabled else { return }
+
+#if DEBUG
+        ExperimentalMicrophoneBreathDetector.shared.start()
+#else
+        breathPhaseEngine.update()
+#endif
     }
     
     private func recordTapPace() {
@@ -406,9 +524,11 @@ struct ContentView: View {
         }
     }
     private func moveCircles() {
+        let breathMotionScale = 0.96 + breathPhaseEngine.breathPhase * 0.08
+
         for index in circles.indices {
-            circles[index].position.x += circles[index].driftX
-            circles[index].position.y += circles[index].driftY
+            circles[index].position.x += circles[index].driftX * breathMotionScale
+            circles[index].position.y += circles[index].driftY * breathMotionScale
 
             if circles[index].isTrail {
                 circles[index].opacity *= 0.995   // slower fade

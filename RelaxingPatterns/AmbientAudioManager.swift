@@ -113,6 +113,7 @@ final class AmbientAudioManager {
     }
 
     func startDefaultAmbient() {
+        configurePlaybackSession()
         startEngineIfNeeded()
         startEvolutionDriftIfNeeded()
         transition(to: .normal)
@@ -157,6 +158,11 @@ final class AmbientAudioManager {
     }
 
 #if DEBUG
+    func restorePlaybackAfterDebugMicStop() {
+        configurePlaybackSession()
+        recoverAmbientAfterDebugMicStart()
+    }
+
     func testPhaseOneShift() {
         let target = evolutionTarget(for: 300)
         targetHighShelfGain = target.highShelfGain
@@ -170,6 +176,29 @@ final class AmbientAudioManager {
         targetHighShelfGain = target.highShelfGain
         targetLowShelfGain = target.lowShelfGain
         targetReverbMix = target.reverbMix
+        startEvolutionDriftIfNeeded()
+    }
+
+    func recoverAmbientAfterDebugMicStart() {
+        guard let currentState else { return }
+
+        engine.stop()
+        engine.reset()
+
+        for loop in loops.values {
+            loop.node.stop()
+            loop.node.volume = 0
+        }
+
+        do {
+            try engine.start()
+        } catch {
+            print("Failed to recover ambient engine after debug mic start: \(error)")
+            return
+        }
+
+        startLoop(for: currentState)
+        loops[currentState]?.node.volume = targetVolume(for: currentState)
         startEvolutionDriftIfNeeded()
     }
 #endif
@@ -223,6 +252,16 @@ final class AmbientAudioManager {
             try engine.start()
         } catch {
             print("Failed to start ambient engine: \(error)")
+        }
+    }
+
+    private func configurePlaybackSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch {
+            print("Failed to configure playback audio session: \(error)")
         }
     }
 

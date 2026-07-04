@@ -46,6 +46,7 @@ final class TextCueManager: ObservableObject {
         "Gently tap and drag...and hear what changes.",
         "Watch the patterns move away.",
         "Let your attention follow the circles.",
+        "Let your breath guide this exploration.",
         "Tap and hold to deepen the sound"
     ]
 
@@ -133,6 +134,11 @@ final class TextCueManager: ObservableObject {
     }
 
     func show(_ message: String) {
+        pendingMessages.append(CueMessage(message: message, visibleDuration: visibleDuration))
+        processNextCueIfNeeded()
+    }
+
+    func showInstruction(_ message: String, visibleDuration: TimeInterval = 8.0) {
         pendingMessages.append(CueMessage(message: message, visibleDuration: visibleDuration))
         processNextCueIfNeeded()
     }

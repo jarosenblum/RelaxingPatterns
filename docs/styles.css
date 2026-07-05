@@ -1,0 +1,327 @@
+/* RelaxingPatterns — shared site styles
+   Design tokens (see project instructions for rationale):
+   bg: deep indigo-charcoal, not pure black — softer, less "app dashboard"
+   orbs: five hues pulled from the in-app palette, blurred + slow-drifting
+   type: Fraunces (display, light weight, quiet warmth) + Inter (body/UI)
+*/
+
+:root{
+  --bg: #14141b;
+  --bg-raise: #1b1b25;
+  --text: #f2efe9;
+  --text-dim: rgba(242,239,233,0.64);
+  --text-faint: rgba(242,239,233,0.42);
+  --orb-rose: #e8a6c4;
+  --orb-amber: #e8c468;
+  --orb-teal: #6fd0b8;
+  --orb-violet: #a08ce8;
+  --orb-blue: #5f97f0;
+  --chip-bg: rgba(255,255,255,0.06);
+  --chip-border: rgba(255,255,255,0.14);
+  --hair: rgba(255,255,255,0.10);
+  --focus: #cdb8ff;
+  --radius: 18px;
+  --max-w: 780px;
+}
+
+*{ box-sizing: border-box; }
+
+html{ scroll-behavior: smooth; }
+
+body{
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.display{
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 340;
+  letter-spacing: -0.01em;
+}
+
+a{ color: inherit; }
+
+:focus-visible{
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ---------- ambient orb field ---------- */
+.orb-field{
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.orb{
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.orb--1{ width: 46vw; height: 46vw; max-width: 620px; max-height: 620px;
+  left: -10vw; top: -8vw; background: radial-gradient(circle, var(--orb-violet), transparent 70%);
+  animation: drift1 46s ease-in-out infinite alternate; }
+.orb--2{ width: 38vw; height: 38vw; max-width: 520px; max-height: 520px;
+  right: -8vw; top: 6vw; background: radial-gradient(circle, var(--orb-rose), transparent 70%);
+  animation: drift2 58s ease-in-out infinite alternate; }
+.orb--3{ width: 34vw; height: 34vw; max-width: 460px; max-height: 460px;
+  left: 12vw; bottom: -10vw; background: radial-gradient(circle, var(--orb-teal), transparent 70%);
+  animation: drift3 52s ease-in-out infinite alternate; }
+.orb--4{ width: 30vw; height: 30vw; max-width: 400px; max-height: 400px;
+  right: 14vw; bottom: -6vw; background: radial-gradient(circle, var(--orb-amber), transparent 70%);
+  animation: drift4 64s ease-in-out infinite alternate; }
+.orb--5{ width: 26vw; height: 26vw; max-width: 340px; max-height: 340px;
+  left: 42vw; top: 30vw; background: radial-gradient(circle, var(--orb-blue), transparent 70%);
+  animation: drift1 70s ease-in-out infinite alternate-reverse; }
+
+@keyframes drift1{ from{ transform: translate(0,0) scale(1); } to{ transform: translate(4vw, 6vw) scale(1.08); } }
+@keyframes drift2{ from{ transform: translate(0,0) scale(1); } to{ transform: translate(-5vw, 4vw) scale(0.94); } }
+@keyframes drift3{ from{ transform: translate(0,0) scale(1); } to{ transform: translate(3vw, -4vw) scale(1.06); } }
+@keyframes drift4{ from{ transform: translate(0,0) scale(1); } to{ transform: translate(-3vw, -5vw) scale(0.96); } }
+
+@media (prefers-reduced-motion: reduce){
+  .orb{ animation: none !important; }
+}
+
+/* ---------- layout shell ---------- */
+.page{
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.wrap{
+  width: 100%;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---------- nav ---------- */
+.nav{
+  padding: 28px 0 0;
+}
+.nav .wrap{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.nav__brand{
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 460;
+  font-size: 18px;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+.nav__links{
+  display: flex;
+  gap: 22px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nav__links a{
+  text-decoration: none;
+  font-size: 14.5px;
+  color: var(--text-dim);
+  padding: 6px 2px;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.nav__links a:hover{ color: var(--text); }
+.nav__links a[aria-current="page"]{
+  color: var(--text);
+  border-bottom-color: var(--hair);
+}
+
+/* ---------- hero ---------- */
+.hero{
+  padding: 96px 0 48px;
+  text-align: center;
+}
+.hero h1{
+  font-size: clamp(36px, 7vw, 58px);
+  margin: 0 0 14px;
+  line-height: 1.06;
+}
+.hero__lede{
+  font-size: clamp(17px, 2.4vw, 20px);
+  color: var(--text-dim);
+  max-width: 480px;
+  margin: 0 auto 28px;
+}
+.hero__caption{
+  font-family: "Fraunces", Georgia, serif;
+  font-style: italic;
+  font-weight: 340;
+  color: var(--text-faint);
+  font-size: 15px;
+  margin-top: 40px;
+}
+
+/* ---------- chips (mode motif from the app) ---------- */
+.chips{
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+.chip{
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  padding: 7px 16px;
+  border-radius: 999px;
+}
+
+/* ---------- buttons ---------- */
+.btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  font-size: 15px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  transition: transform 0.15s ease, background 0.2s ease;
+}
+.btn--primary{
+  background: var(--text);
+  color: #16161d;
+  font-weight: 600;
+}
+.btn--primary:hover{ transform: translateY(-1px); }
+.btn--ghost{
+  border: 1px solid var(--hair);
+  color: var(--text-dim);
+}
+.btn--ghost:hover{ color: var(--text); border-color: rgba(255,255,255,0.28); }
+
+/* ---------- feature grid ---------- */
+.features{
+  padding: 40px 0 64px;
+}
+.features__grid{
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 28px 24px;
+}
+.feature h3{
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 460;
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.feature p{
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+/* ---------- generic content sections ---------- */
+.section{
+  padding: 44px 0;
+  border-top: 1px solid var(--hair);
+}
+.section h2{
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 420;
+  font-size: clamp(24px, 4vw, 32px);
+  margin: 0 0 16px;
+}
+.section p{ color: var(--text-dim); }
+.section--tight{ padding: 28px 0; }
+
+.lede-block{
+  max-width: 560px;
+}
+
+/* ---------- placeholder callouts ---------- */
+.placeholder{
+  border: 1px dashed var(--chip-border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  color: var(--text-faint);
+  font-size: 14px;
+}
+
+/* ---------- FAQ ---------- */
+.faq details{
+  border-top: 1px solid var(--hair);
+  padding: 18px 0;
+}
+.faq details:last-child{ border-bottom: 1px solid var(--hair); }
+.faq summary{
+  cursor: pointer;
+  font-family: "Fraunces", Georgia, serif;
+  font-weight: 460;
+  font-size: 17px;
+  list-style: none;
+}
+.faq summary::-webkit-details-marker{ display:none; }
+.faq summary::before{
+  content: "+";
+  display: inline-block;
+  width: 18px;
+  color: var(--text-faint);
+}
+.faq details[open] summary::before{ content: "–"; }
+.faq p{
+  margin: 10px 0 0 26px;
+  color: var(--text-dim);
+  font-size: 15px;
+}
+
+/* ---------- compliance / footer ---------- */
+.compliance{
+  font-size: 13.5px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--hair);
+  padding-top: 20px;
+}
+
+.footer{
+  margin-top: auto;
+  padding: 40px 0 48px;
+}
+.footer .wrap{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--hair);
+  padding-top: 24px;
+  font-size: 13.5px;
+  color: var(--text-faint);
+}
+.footer__links{
+  display: flex;
+  gap: 18px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.footer__links a{ text-decoration: none; color: var(--text-faint); }
+.footer__links a:hover{ color: var(--text-dim); }
+
+@media (max-width: 640px){
+  .nav__links{ gap: 14px; }
+  .features__grid{ grid-template-columns: 1fr; }
+  .hero{ padding: 64px 0 36px; }
+}
